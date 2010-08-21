@@ -21,11 +21,13 @@ import os
 import cPickle
 
 from cvs2svn_lib.context import Ctx
+from cvs2svn_lib import db
 from cvs2svn_lib.common import FatalError
 from cvs2svn_lib.common import IllegalSVNPathError
 from cvs2svn_lib.common import normalize_svn_path
 from cvs2svn_lib.common import verify_paths_disjoint
 from cvs2svn_lib.symbol_transform import CompoundSymbolTransform
+from sqlalchemy.orm.exc import NoResultFound
 
 
 class FileInAndOutOfAtticException(Exception):
@@ -46,15 +48,20 @@ def normalize_ttb_path(opt, path, allow_empty=False):
     raise FatalError('Problem with %s: %s' % (opt, e,))
 
 
-class Project(object):
+class CVSProject(db.Base):
   """A project within a CVS repository."""
 
+  __tablename__ = 'projects'
+
+  id = db.Column(db.Integer, primary_key=True)
+  project_cvs_repos_path = db.Column(db.Text)
+  cvs_repos_root = db.Column(db.Text)
+  cvs_module = db.Column(db.Text)
+
   def __init__(
-        self, id, project_cvs_repos_path,
-        initial_directories=[],
-        symbol_transforms=None,
+        self, project_cvs_repos_path, cvs_repos_root, cvs_module
         ):
-    """Create a new Project record.
+    """Create a new CVSProject record.
 
     ID is a unique id for this project.  PROJECT_CVS_REPOS_PATH is the
     main CVS directory for this project (within the filesystem).
@@ -67,17 +74,22 @@ class Project(object):
     which will be used to transform any symbol names within this
     project."""
 
-    self.id = id
+    self.project_cvs_repos_path = project_cvs_repos_path
+    self.cvs_repos_root = cvs_repos_root
+    self.cvs_module = cvs_module
 
-    self.project_cvs_repos_path = os.path.normpath(project_cvs_repos_path)
-    if not os.path.isdir(self.project_cvs_repos_path):
-      raise FatalError("The specified CVS repository path '%s' is not an "
-                       "existing directory." % self.project_cvs_repos_path)
+    self._initial_directories = []
+    self.symbol_transform = CompoundSymbolTransform([])
 
-    self.cvs_repository_root, self.cvs_module = \
-        self.determine_repository_root(
-            os.path.abspath(self.project_cvs_repos_path))
+    # The ID of the Trunk instance for this CVSProject.  This member is
+    # filled in during CollectRevsPass.
+    self.trunk_id = None
 
+    # The ID of the CVSDirectory representing the root directory of
+    # this project.  This member is filled in during CollectRevsPass.
+    self.root_cvs_directory_id = None
+
+  def set_initial_directories(self, initial_directories):
     # The SVN directories to add when the project is first created:
     self._initial_directories = []
 
@@ -93,20 +105,13 @@ class Project(object):
 
     verify_paths_disjoint(*self._initial_directories)
 
+  def set_symbol_transform(self, symbol_transforms):
     # A list of transformation rules (regexp, replacement) applied to
     # symbol names in this project.
     if symbol_transforms is None:
       symbol_transforms = []
 
     self.symbol_transform = CompoundSymbolTransform(symbol_transforms)
-
-    # The ID of the Trunk instance for this Project.  This member is
-    # filled in during CollectRevsPass.
-    self.trunk_id = None
-
-    # The ID of the CVSDirectory representing the root directory of
-    # this project.  This member is filled in during CollectRevsPass.
-    self.root_cvs_directory_id = None
 
   def __eq__(self, other):
     return self.id == other.id
@@ -198,6 +203,34 @@ class Project(object):
 
   def __str__(self):
     return self.project_cvs_repos_path
+
+
+def create_project(
+                    project_cvs_repos_path,
+                    initial_directories=[],
+                    symbol_transforms=None,
+                    ):
+    project_cvs_repos_path = os.path.normpath(project_cvs_repos_path)
+    if not os.path.isdir(project_cvs_repos_path):
+      raise FatalError("The specified CVS repository path '%s' is not an "
+                       "existing directory." % project_cvs_repos_path)
+
+    cvs_repos_root, cvs_module = \
+        CVSProject.determine_repository_root(
+            os.path.abspath(project_cvs_repos_path))
+
+    ctx = Ctx()
+    sess = ctx.session
+    CVSProject.metadata.create_all(ctx.engine)
+    try:
+        project = sess.query(CVSProject).filter_by(project_cvs_repos_path=project_cvs_repos_path).one()
+    except NoResultFound:
+        project = CVSProject(project_cvs_repos_path, cvs_repos_root, cvs_module)
+        sess.add(project)
+        sess.commit()
+    project.set_symbol_transform(symbol_transforms)
+    project.set_initial_directories(initial_directories)
+    return project
 
 
 def read_projects(filename):

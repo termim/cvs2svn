@@ -28,7 +28,7 @@ from cvs2svn_lib.log import logger
 from cvs2svn_lib.common import error_prefix
 from cvs2svn_lib.context import Ctx
 from cvs2svn_lib.artifact_manager import artifact_manager
-from cvs2svn_lib.project import Project
+from cvs2svn_lib.project import CVSProject
 from cvs2svn_lib.cvs_item import CVSRevisionAdd
 from cvs2svn_lib.cvs_item import CVSRevisionChange
 from cvs2svn_lib.cvs_item import CVSRevisionDelete
@@ -82,15 +82,14 @@ class DVCSRunOptions(RunOptions):
 
     If a project had already been set, overwrite it.
 
-    Most arguments are passed straight through to the Project
+    Most arguments are passed straight through to the CVSProject
     constructor.  SYMBOL_STRATEGY_RULES is an iterable of
     SymbolStrategyRules that will be applied to symbols in this
     project."""
 
     symbol_strategy_rules = list(symbol_strategy_rules)
 
-    project = Project(
-        0,
+    project = CVSProject(
         project_cvs_repos_path,
         symbol_transforms=symbol_transforms,
         )

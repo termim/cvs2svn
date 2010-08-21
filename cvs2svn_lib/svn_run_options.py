@@ -31,7 +31,7 @@ from cvs2svn_lib.run_options import not_both
 from cvs2svn_lib.run_options import RunOptions
 from cvs2svn_lib.run_options import ContextOption
 from cvs2svn_lib.run_options import IncompatibleOption
-from cvs2svn_lib.project import Project
+from cvs2svn_lib.project import create_project
 from cvs2svn_lib.svn_output_option import DumpfileOutputOption
 from cvs2svn_lib.svn_output_option import ExistingRepositoryOutputOption
 from cvs2svn_lib.svn_output_option import NewRepositoryOutputOption
@@ -464,14 +464,11 @@ A directory called \\fIcvs2svn-tmp\\fR (or the directory specified by
     if tags_path is not None:
       symbol_strategy_rules.append(TagsPathRule(tags_path))
 
-    id = len(self.projects)
-    project = Project(
-        id,
+    project = create_project(
         project_cvs_repos_path,
         initial_directories=initial_directories,
         symbol_transforms=symbol_transforms,
         )
-
     self.projects.append(project)
     self.project_symbol_strategy_rules.append(symbol_strategy_rules)
 
