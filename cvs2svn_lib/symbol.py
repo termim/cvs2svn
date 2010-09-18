@@ -80,10 +80,17 @@ LOD) is used to refer to such objects."""
 
 from cvs2svn_lib.context import Ctx
 from cvs2svn_lib.common import path_join
+from cvs2svn_lib import db
 
 
-class AbstractSymbol:
+class AbstractSymbol(db.Base):
   """Base class for all other classes in this file."""
+
+  __tablename__ = 'symbols'
+  id = db.Column(db.Integer, primary_key=True)
+  project = db.Column(db.Text)
+  discriminator = db.Column('type', db.Text)
+  __mapper_args__ = {'polymorphic_on': discriminator}
 
   def __init__(self, id, project):
     self.id = id
@@ -102,6 +109,9 @@ class LineOfDevelopment(AbstractSymbol):
   This is basically the abstraction for what will be a root tree in
   the Subversion repository."""
 
+  __mapper_args__ = {'polymorphic_identity': 'LineOfDevelopment'}
+  base_path = db.Column(db.Text)
+
   def __init__(self, id, project):
     AbstractSymbol.__init__(self, id, project)
     self.base_path = None
@@ -114,6 +124,8 @@ class LineOfDevelopment(AbstractSymbol):
 
 class Trunk(LineOfDevelopment):
   """Represent the main line of development."""
+
+  __mapper_args__ = {'polymorphic_identity': 'Trunk'}
 
   def __getstate__(self):
     return (self.id, self.project.id, self.base_path,)
@@ -152,6 +164,10 @@ class Symbol(AbstractSymbol):
   In CollateSymbolsPass, Symbols are replaced by Branches, Tags, and
   ExcludedSymbols (the latter being discarded at the end of that
   pass)."""
+
+  __mapper_args__ = {'polymorphic_identity': 'Symbol'}
+  name = db.Column(db.Text)
+  preferred_parent_id = db.Column(db.Integer)
 
   def __init__(self, id, project, name, preferred_parent_id=None):
     AbstractSymbol.__init__(self, id, project)
@@ -193,6 +209,8 @@ class Symbol(AbstractSymbol):
 class TypedSymbol(Symbol):
   """A Symbol whose type (branch, tag, or excluded) has been decided."""
 
+  __mapper_args__ = {'polymorphic_identity': 'TypedSymbol'}
+
   def __init__(self, symbol):
     Symbol.__init__(
         self, symbol.id, symbol.project, symbol.name,
@@ -202,6 +220,8 @@ class TypedSymbol(Symbol):
 
 class IncludedSymbol(TypedSymbol, LineOfDevelopment):
   """A TypedSymbol that will be included in the conversion."""
+
+  __mapper_args__ = {'polymorphic_identity': 'IncludedSymbol'}
 
   def __init__(self, symbol):
     TypedSymbol.__init__(self, symbol)
@@ -224,6 +244,8 @@ class IncludedSymbol(TypedSymbol, LineOfDevelopment):
 class Branch(IncludedSymbol):
   """An object that describes a CVS branch."""
 
+  __mapper_args__ = {'polymorphic_identity': 'Branch'}
+
   def __str__(self):
     """For convenience only.  The format is subject to change at any time."""
 
@@ -231,13 +253,19 @@ class Branch(IncludedSymbol):
 
 
 class Tag(IncludedSymbol):
-  def __str__(self):
+
+  __mapper_args__ = {'polymorphic_identity': 'Tag'}
+
+def __str__(self):
     """For convenience only.  The format is subject to change at any time."""
 
     return 'Tag(%r)' % (self.name,)
 
 
 class ExcludedSymbol(TypedSymbol):
+
+  __mapper_args__ = {'polymorphic_identity': 'ExcludedSymbol'}
+
   def __str__(self):
     """For convenience only.  The format is subject to change at any time."""
 
